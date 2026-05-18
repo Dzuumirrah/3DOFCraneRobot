@@ -23,6 +23,7 @@ from PyQt5.QtGui import (
 
 from canvas_widget import CraneCanvasWidget
 from control_panel import ControlPanel
+from kinematics import CraneKinematics, JointLimits
 
 import params
 
@@ -37,6 +38,13 @@ class MainWindow(QMainWindow):
         self._build_layout()
 
         self.target = None
+
+        self.limits = JointLimits(
+            theta_min=-180, theta_max=180,
+            r_min=0, r_max=45,
+            h_min=0, h_max=50
+        )
+        self.ik = CraneKinematics(self.limits)
 
     def _build_layout(self):
         central = QWidget()
@@ -72,8 +80,6 @@ class MainWindow(QMainWindow):
         theta_deg, r_cm, h_cm = self._calculate_ik(x_cm, y_cm)
         self.panel.set_joint_info(theta_deg, r_cm, h_cm)
 
-        # Update canvas visual
-        # self.canvas.set_target(x_cm, y_cm)
         print(f"Target: ({x_cm:.1f}, {y_cm:.1f}) → θ={theta_deg:.1f}°, r={r_cm:.1f}cm, h={h_cm:.1f}cm")
         
         # enable commands
@@ -81,17 +87,25 @@ class MainWindow(QMainWindow):
 
     def _calculate_ik(self, x_cm, y_cm, h_cm=20):
         """
-        Sementara pakai ini
-        θ = atan2(y, x)
-        r = sqrt(x² + y²)
-        h = target height (default 20cm)
+        Calculate inverse kinematics using proper solver.
+        
+        Menggunakan CraneKinematics module dengan:
+        - Proper IK calculation
+        - Workspace validation
+        - Joint constraints
+        - Error handling
         """
+        # theta_rad = math.atan2(y_cm, x_cm)
+        # theta_deg = math.degrees(theta_rad)
+        # r_cm = math.sqrt(x_cm**2 + y_cm**2)
+        result = self.ik.calculate(x_cm, y_cm, h_cm)
 
-        theta_rad = math.atan2(y_cm, x_cm)
-        theta_deg = math.degrees(theta_rad)
-        r_cm = math.sqrt(x_cm**2 + y_cm**2)
+        # handle error
+        if not result.is_valid:
+            print(f"IK Warning {result.error_msg}")
+            self.panel.set_status("ERROR", result.error_msg)
 
-        return theta_deg, r_cm, h_cm
+        return result.theta_deg, result.r_cm, result.h_cm
     
     @pyqtSlot()
     def _on_pick(self):

@@ -47,5 +47,5 @@ INDICATOR_COLOR:StatusIndicator = {
 }
 
 # Ukuran window GUI
-S_FIX_MAIN = 600, 600
+S_FIX_MAIN = 1000, 600
 S_FIX_CANVAS = 600, 550
