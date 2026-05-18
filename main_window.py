@@ -27,13 +27,13 @@ from control_panel import ControlPanel
 import params
 
 COLOR = params.COLORS
-
+W_MAIN, H_MAIN = params.S_FIX_MAIN
 
 class MainWindow(QMainWindow):
     def __init__ (self):
         super().__init__()
         self.setWindowTitle("Robot Crane 3-DOF GUI")
-        self.setMinimumSize(1000, 650)
+        self.setMinimumSize(W_MAIN, H_MAIN)
         self._build_layout()
 
         self.target = None
@@ -73,7 +73,7 @@ class MainWindow(QMainWindow):
         self.panel.set_joint_info(theta_deg, r_cm, h_cm)
 
         # Update canvas visual
-        self.canvas.set_target(x_cm, y_cm)
+        # self.canvas.set_target(x_cm, y_cm)
         print(f"Target: ({x_cm:.1f}, {y_cm:.1f}) → θ={theta_deg:.1f}°, r={r_cm:.1f}cm, h={h_cm:.1f}cm")
         
         # enable commands
@@ -120,7 +120,7 @@ class MainWindow(QMainWindow):
         """Handle HOME command"""
         self.panel.set_status("MOVING", "Going to HOME...")
         self.target = None
-        self.canvas.set_target(0, 0)
+        self.canvas.set_target(0, 0, emit_signal=False)
         # TODO: send command to crane via serial
         print(f"HOME command: move to(0, 0)")
 

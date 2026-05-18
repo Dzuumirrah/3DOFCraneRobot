@@ -24,10 +24,10 @@ COLORS:ColorsDict = {
     'DARKER_GRAY': '#555555',
     'GRAY' : "#aaaaaa",
     'DARK_RED' : "#8b0000",
-    "BLUE": "#3498db",      # Blue
-    "ORANGE": "#f39c12",    # Orange
-    "GREEN": "#2ecc71",      # Green
-    "RED": "#e74c3c",       # Red
+    "BLUE": "#3498db",      
+    "ORANGE": "#f39c12",    
+    "GREEN": "#2ecc71",      
+    "RED": "#e74c3c",       
     "PURPLE": "#9b59b6"
 }
 
@@ -39,9 +39,13 @@ class StatusIndicator (TypedDict):
     HOMED: str     
 
 INDICATOR_COLOR:StatusIndicator = {
-    "IDLE": COLORS["BLUE"],      # Blue
-    "MOVING": COLORS['ORANGE'],    # Orange
-    "DONE": COLORS["GREEN"],     # Green
-    "ERROR": COLORS['RED'],     # Red
-    "HOMED": COLORS["LIGHT_BLUE"],     # Blue
+    "IDLE": COLORS["BLUE"],      
+    "MOVING": COLORS['ORANGE'],    
+    "DONE": COLORS["GREEN"],     
+    "ERROR": COLORS['RED'],     
+    "HOMED": COLORS["LIGHT_BLUE"],     
 }
+
+# Ukuran window GUI
+S_FIX_MAIN = 600, 600
+S_FIX_CANVAS = 600, 550

@@ -25,14 +25,13 @@ class ControlPanel(QWidget):
         self._build_layout()
 
         # State tracking
-        self.curren_status = "IDLE"
+        self.current_status = "IDLE"
         self.last_target = None
 
     def _build_layout(self):
         main_layout = QVBoxLayout(self)
         main_layout.setSpacing(15)
         main_layout.setContentsMargins(15, 15, 15, 15)
-
         # === STATUS SECTION ===
         status_group = self._build_status_section()
         main_layout.addWidget(status_group)
@@ -158,6 +157,7 @@ class ControlPanel(QWidget):
             subcontrol-origin: margin;
             left: 10px;
             padding: 0 3px 0 3px
+            color: {COLOR['DARK_BLUE']}
         }}
         """
     def _button_style(self, bg_color, emergency=False):
