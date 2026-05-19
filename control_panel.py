@@ -76,6 +76,7 @@ class ControlPanel(QWidget):
 
         layout.addLayout(status_layout)
         group.setLayout(layout)
+        self.update()
         return group
     
     def _build_command_section(self):
@@ -115,6 +116,7 @@ class ControlPanel(QWidget):
         layout.addWidget(self.btn_estop, 1, 1)
 
         group.setLayout(layout)
+        self.update()
         return group
     
     def _build_info_section(self):
@@ -139,6 +141,7 @@ class ControlPanel(QWidget):
         layout.addWidget(self.info_joints)
 
         group.setLayout(layout)
+        self.update()
         return group
 
 

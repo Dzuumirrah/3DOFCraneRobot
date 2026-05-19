@@ -49,3 +49,7 @@ INDICATOR_COLOR:StatusIndicator = {
 # Ukuran window GUI
 S_FIX_MAIN = 1000, 400
 S_FIX_CANVAS = 600, 300
+
+# Konfigurasi serial port
+COM_PORT = 'COM3'  # Sesuaikan dengan port yang digunakan
+BAUD_RATE = 9600

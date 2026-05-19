@@ -17,7 +17,9 @@ class CraneCanvasWidget(QWidget):
     # Workspace params (cm)
     WORKSPACE_CENTER_X = 0   # Center of semicircle (middle of workspace)
     WORKSPACE_CENTER_Y = 0    # Y = 0 at home level
-    WORKSPACE_RADIUS = 45     # Max reach radius
+    WORKSPACE_RADIUS_MIN = 15
+    WORKSPACE_RADIUS_MAX = 45
+    TASK_SPACE_RADIUS = 60     # Max reach radius
     WORKSPACE_Y_MAX = 45      # Upper limit of workspace
 
     # Visual params
@@ -59,7 +61,7 @@ class CraneCanvasWidget(QWidget):
         dy = y_cm - self.WORKSPACE_CENTER_Y
         dist = (dx**2 + dy**2)**0.5
 
-        return dist <= self.WORKSPACE_RADIUS
+        return dist <= self.TASK_SPACE_RADIUS
         
 
     def _pixel_to_cartesian(self, px, py):
@@ -76,8 +78,8 @@ class CraneCanvasWidget(QWidget):
         dy_py = canvas_center_py - py # Flip canvas agar meningkat ke bawah
         
         # Normalisasi ke koordinat workspace 
-        x_cm = (dx_px / canvas_radius_px) * self.WORKSPACE_RADIUS + self.WORKSPACE_CENTER_X
-        y_cm = (dy_py / canvas_radius_px) * self.WORKSPACE_RADIUS + self.WORKSPACE_CENTER_Y
+        x_cm = (dx_px / canvas_radius_px) * self.TASK_SPACE_RADIUS + self.WORKSPACE_CENTER_X
+        y_cm = (dy_py / canvas_radius_px) * self.TASK_SPACE_RADIUS + self.WORKSPACE_CENTER_Y
         
         return x_cm, y_cm
     
@@ -93,8 +95,8 @@ class CraneCanvasWidget(QWidget):
         dy_cm = y_cm - self.WORKSPACE_CENTER_Y
  
         # Scale to pixels
-        dx_px = (dx_cm / self.WORKSPACE_RADIUS) * canvas_radius_px
-        dy_px = (dy_cm / self.WORKSPACE_RADIUS) * canvas_radius_px
+        dx_px = (dx_cm / self.TASK_SPACE_RADIUS) * canvas_radius_px
+        dy_px = (dy_cm / self.TASK_SPACE_RADIUS) * canvas_radius_px
  
         # Convert to pixel coordinates (flip Y back)
         px = canvas_center_px + dx_px
@@ -134,6 +136,7 @@ class CraneCanvasWidget(QWidget):
 
         # Draw axes labels
         self._draw_labels(painter)
+        self.update()
 
     def _draw_grid(self, painter):
         """Draw grid lines"""
@@ -147,8 +150,8 @@ class CraneCanvasWidget(QWidget):
             angle_rad = math.radians(angle_deg)
             x_start = self.WORKSPACE_CENTER_X
             y_start = self.WORKSPACE_CENTER_Y
-            x_end = self.WORKSPACE_CENTER_X + self.WORKSPACE_RADIUS * math.cos(angle_rad)
-            y_end = self.WORKSPACE_CENTER_Y + self.WORKSPACE_RADIUS * math.sin(angle_rad)
+            x_end = self.WORKSPACE_CENTER_X + self.TASK_SPACE_RADIUS * math.cos(angle_rad)
+            y_end = self.WORKSPACE_CENTER_Y + self.TASK_SPACE_RADIUS * math.sin(angle_rad)
             
             px1, py1 = self._cartesian_to_pixel(x_start, y_start)
             px2, py2 = self._cartesian_to_pixel(x_end, y_end)
@@ -162,8 +165,8 @@ class CraneCanvasWidget(QWidget):
         pen.setStyle(Qt.DotLine)
         painter.setPen(pen)
         
-        for r_cm in range(int(self.GRID_SPACING), int(self.WORKSPACE_RADIUS)+1, int(self.GRID_SPACING)):
-            radius_px = (r_cm / self.WORKSPACE_RADIUS) * canvas_radius_px
+        for r_cm in range(int(self.GRID_SPACING), int(self.TASK_SPACE_RADIUS)+1, int(self.GRID_SPACING)):
+            radius_px = (r_cm / self.TASK_SPACE_RADIUS) * canvas_radius_px
             # Draw semicircle arc (only upper half)
             painter.drawArc(
                 int(canvas_center_px - radius_px),
@@ -183,18 +186,33 @@ class CraneCanvasWidget(QWidget):
         pen.setStyle(Qt.DashLine)
         painter.setPen(pen)
         
+         # Draw max workspace radius.
+        outer_radius_cm = self.WORKSPACE_RADIUS_MAX
+        outer_radius_px = (outer_radius_cm / self.TASK_SPACE_RADIUS) * canvas_radius_px
+        
         # Draw semicircle arc (upper half only, 0° to 180°)
         painter.drawArc(
-            int(canvas_center_px - canvas_radius_px),
-            int(canvas_center_py - canvas_radius_px),
-            int(canvas_radius_px * 2),
-            int(canvas_radius_px * 2),
+            int(canvas_center_px - outer_radius_px),
+            int(canvas_center_py - outer_radius_px),
+            int(outer_radius_px * 2),
+            int(outer_radius_px * 2),
             0, 180 * 16  # 180 degrees in 1/16ths
+        )
+         # Draw min workspace radius.
+        inner_radius_cm = self.WORKSPACE_RADIUS_MIN
+        inner_radius_px = (inner_radius_cm / self.TASK_SPACE_RADIUS) * canvas_radius_px
+        
+        painter.drawArc(
+            int(canvas_center_px - inner_radius_px),
+            int(canvas_center_py - inner_radius_px),
+            int(inner_radius_px * 2),
+            int(inner_radius_px * 2),
+            0, 180 * 16
         )
         
         # Draw baseline (y=0)
-        base_left_px, base_py = self._cartesian_to_pixel(self.WORKSPACE_CENTER_X - self.WORKSPACE_RADIUS, self.WORKSPACE_CENTER_Y)
-        base_right_px, _ = self._cartesian_to_pixel(self.WORKSPACE_CENTER_X + self.WORKSPACE_RADIUS, self.WORKSPACE_CENTER_Y)
+        base_left_px, base_py = self._cartesian_to_pixel(self.WORKSPACE_CENTER_X - self.TASK_SPACE_RADIUS, self.WORKSPACE_CENTER_Y)
+        base_right_px, _ = self._cartesian_to_pixel(self.WORKSPACE_CENTER_X + self.TASK_SPACE_RADIUS, self.WORKSPACE_CENTER_Y)
         painter.drawLine(base_left_px, base_py, base_right_px, base_py)
     
     def _draw_crane(self, painter):
@@ -230,7 +248,7 @@ class CraneCanvasWidget(QWidget):
         painter.setPen(QColor(150, 150, 150))
 
         # Radius labels (concentric circles)
-        for r_cm in range(int(self.GRID_SPACING), int(self.WORKSPACE_RADIUS)+1, 15):
+        for r_cm in range(int(self.GRID_SPACING), int(self.TASK_SPACE_RADIUS)+1, 15):
             px, py = self._cartesian_to_pixel(self.WORKSPACE_CENTER_X + r_cm, self.WORKSPACE_CENTER_Y)
             painter.drawText(px, py - 15, 25, 15, Qt.AlignCenter, f"{r_cm}cm")
         
@@ -242,7 +260,7 @@ class CraneCanvasWidget(QWidget):
         # Angle labels (0°, 45°, 90°, 135°, 180°)
         import math
         for angle_deg in [0, 45, 90, 135, 180]:
-            r_marker = self.WORKSPACE_RADIUS * 1.1  # Slightly outside
+            r_marker = self.TASK_SPACE_RADIUS * 1.1  # Slightly outside
             angle_rad = math.radians(angle_deg)
             x_cm = self.WORKSPACE_CENTER_X + r_marker * math.cos(angle_rad)
             y_cm = self.WORKSPACE_CENTER_Y + r_marker * math.sin(angle_rad)

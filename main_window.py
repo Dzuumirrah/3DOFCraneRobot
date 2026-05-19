@@ -25,11 +25,14 @@ from PyQt5.QtGui import (
 from canvas_widget import CraneCanvasWidget
 from control_panel import ControlPanel
 from kinematics import CraneKinematics, JointLimits
+from serial_comm import CraneSerialComm, SerialConfig
 
 import params
 
 COLOR = params.COLORS
 W_MAIN, H_MAIN = params.S_FIX_MAIN
+COM_PORT = params.COM_PORT
+BAUD_RATE = params.BAUD_RATE
 
 class MainWindow(QMainWindow):
     def __init__ (self):
@@ -42,16 +45,92 @@ class MainWindow(QMainWindow):
 
         self.limits = JointLimits(
             theta_min=-180, theta_max=180,
-            r_min=0, r_max=45,
+            r_min=15, r_max=45,
             h_min=0, h_max=50
         )
         self.ik = CraneKinematics(self.limits)
+
+        self.serial_config = SerialConfig(
+            port=COM_PORT, 
+            baudrate=BAUD_RATE,
+            timeout=1
+        )
+        
+        self.serial_comm = CraneSerialComm(self.serial_config)
+        self._setup_serial_callbacks()
+
+        # Tr auto connect 
+        self._attempt_serial_connection()
 
         # Auto-idle timer setelah 5 detik
         self.idle_timer = QTimer()
         self.idle_timer.setSingleShot(True)
         self.idle_timer.timeout.connect(self._on_idle_timeout)
         self.IDLE_TIMEOUT_MS = 5000
+
+    def _setup_serial_callbacks(self):
+        """Setup callback untuk serial events """
+        self.serial_comm.set_callbacks(
+            on_feedback = self._on_serial_feedback,
+            on_error = self._on_serial_error,
+            on_connected = self._on_serial_connected,
+            on_disconnected = self._on_serial_disconnected
+        )
+
+    def _attempt_serial_connection(self):
+        """Coba connect ke serial saat startup"""
+        if self.serial_comm.connect(self.serial_comm.config.port):
+            print(f"[MAIN] Connected to serial port {COM_PORT} at {BAUD_RATE} baud.")
+        else:
+            print(f"[MAIN] Failed to connect to serial port {COM_PORT}. Running in offline mode.")
+            self.panel.set_status("ERROR", f"Serial connection failed on {COM_PORT}")
+    
+    @pyqtSlot(str)
+    def _on_serial_feedback(self, feedback: str):
+        """Handle feedback dari serial (contoh: status update)"""
+        print(f"[SERIAL FEEDBACK] {feedback}")
+
+        # Parse common responses 
+        if feedback == "DONE":
+            self.panel.set_status("DONE", "Action completed")
+        elif feedback == "IDLE":
+            self.panel.set_status("IDLE", "Ready for command")
+        elif feedback.startswith("ERROR"):
+            self.panel.set_status("ERROR", feedback)
+        elif feedback.startswith("POS"):
+            # position feedback
+            try:
+                parts = feedback.split(',')
+                if len(parts) >= 4:
+                    theta = float(parts[1])
+                    r = float(parts[2])
+                    h = float(parts[3])
+
+                    # update canvas
+                    import math
+                    x_cm = 25 + r * math.cos(math.radians(theta))
+                    y_cm = r * math.sin(math.radians(theta))
+                    self.canvas.set_crane_position(x_cm, y_cm)
+            except(ValueError, IndexError):
+                print(f"[SERIAL FEEDBACK] Failed to parse position feedback: {feedback}")
+
+    @pyqtSlot(str)
+    def _on_serial_error(self, error_msg: str):
+        """Handle serial errors"""
+        print(f"[SERIAL ERROR] {error_msg}")
+        self.panel.set_status("ERROR", f"Serial error: {error_msg}")
+
+    @pyqtSlot()
+    def _on_serial_connected(self):
+        """Handle serial connection established"""
+        print(f"[SERIAL] Connection established.")
+        self.panel.set_status("IDLE", "Serial connected, ready for command")
+
+    @pyqtSlot()
+    def _on_serial_disconnected(self):
+        """Handle serial disconnection"""
+        print(f"[SERIAL] Disconnected.")
+        self.panel.set_status("ERROR", "Serial disconnected")
 
     def _build_layout(self):
         central = QWidget()
@@ -111,6 +190,7 @@ class MainWindow(QMainWindow):
         if not result.is_valid:
             print(f"IK Warning {result.error_msg}")
             self.panel.set_status("ERROR", result.error_msg)
+            self._start_idle_timer(1500)
 
         return result.theta_deg, result.r_cm, result.h_cm
     
@@ -121,12 +201,26 @@ class MainWindow(QMainWindow):
             self.panel.set_status("ERROR", "No target set")
             return
         
-        self.panel.set_status("MOVING", "Moving to target...")
-        self._start_idle_timer()
+        # Ambil target terakhir yang diklik
         x_cm, y_cm = self.target
-        # TODO: send command to crane via serial
-        print(f"PICK command: move to({x_cm:.1f}, {y_cm:.1f})")
+        
+        # Hitung IK untuk target
+        theta_deg, r_cm, h_cm = self._calculate_ik(x_cm, y_cm)
+        
+        self.panel.set_status("MOVING", f"Moving to {x_cm:.1f}, {y_cm:.1f} to PICK")
+        self._start_idle_timer()
+        
+        success = self.serial_comm.send_move_command(
+            theta_deg = theta_deg,
+            r_cm = r_cm,
+            h_cm = h_cm,
+            magnet_on = True
+        )
 
+        if not success:
+            print(f"[MAIN] Failed to send PICK command to serial.")
+            self.panel.set_status("ERROR", "Failed to send PICK command")
+            self._start_idle_timer(1500)
         
 
     @pyqtSlot()
@@ -134,10 +228,28 @@ class MainWindow(QMainWindow):
         """Handle PLACE command"""    
         self.panel.set_status("MOVING", "Placing object...")
         self._start_idle_timer()
-        # TODO: send command to crane via serial
-        print(f"PLACE command: release magnet")
 
+        if self.target:
+            # taruh ke target terakhir yang diklik
+            x_cm, y_cm = self.target
+        else:
+            # jika tidak ada target, taruh di lokasi yang sama
+            x_cm, y_cm = self.canvas.crane_pos
         
+        theta_deg, r_cm, h_cm = self._calculate_ik(x_cm, y_cm)
+
+        # kirim ke serial
+        sucsess = self.serial_comm.send_move_command(
+            theta_deg = theta_deg,
+            r_cm = r_cm,
+            h_cm = h_cm,
+            magnet_on = False
+        )
+        if not sucsess:
+            print(f"[MAIN] Failed to send PLACE command to serial.")
+            self.panel.set_status("ERROR", "Failed to send PLACE command")
+            self._start_idle_timer(1500)
+
     @pyqtSlot()
     def _on_home(self):
         """Handle HOME command"""
@@ -146,17 +258,24 @@ class MainWindow(QMainWindow):
         self.canvas.set_target(self.canvas.home_pos[0], self.canvas.home_pos[1], emit_signal=False)
         
         self._start_idle_timer()
-        # TODO: send command to crane via serial
-        print(f"HOME command: move to({self.canvas.home_pos[0]:.1f}, {self.canvas.home_pos[1]:.1f})")
+        
+        # Kirim command HOME ke serial
+        success = self.serial_comm.send_home_command()
 
+        if not success:
+            print(f"[MAIN] Failed to send HOME command to serial.")
+            self.panel.set_status("ERROR", "Failed to send HOME command")
+            self._start_idle_timer(1500)
     @pyqtSlot()
     def _on_estop(self):
         """Handle E-STOP command"""
         self.panel.set_status("ERROR", "EMERGENCY STOPPED")
         self.panel.enable_commands(False)
         self.idle_timer.stop()
-        # TODO: send EMERGENCY STOP  via serial
-        print(f"E-STOP activated")
+
+        # Kirim command E-STOP ke serial
+        self.serial_comm.send_estop_command()
+        print(f"[MAIN] Emergency Stop activated!")
 
     @pyqtSlot()
     def _on_idle_timeout(self):
@@ -165,9 +284,12 @@ class MainWindow(QMainWindow):
         self.panel.enable_commands(True)
         print("[Timer] Auto-idle timeout - kembali ke IDLE")
 
-    def _start_idle_timer(self):
+    def _start_idle_timer(self, timeMS=None):
         """Start hitung mundur ke auto-idle"""
-        self.idle_timer.start(self.IDLE_TIMEOUT_MS)
+        if not timeMS:
+            self.idle_timer.start(self.IDLE_TIMEOUT_MS)
+            return
+        self.idle_timer.start(timeMS)
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     win = MainWindow()
