@@ -1,5 +1,6 @@
 import sys
 import math
+import json
 from PyQt5.QtWidgets import (
     QApplication, 
     QMainWindow, 
@@ -33,6 +34,7 @@ COLOR = params.COLORS
 W_MAIN, H_MAIN = params.S_FIX_MAIN
 COM_PORT = params.COM_PORT
 BAUD_RATE = params.BAUD_RATE
+USE_SERIAL_FEEDBACK = params.USE_SERIAL_FEEDBACK
 
 class MainWindow(QMainWindow):
     def __init__ (self):
@@ -53,8 +55,10 @@ class MainWindow(QMainWindow):
         self.serial_config = SerialConfig(
             port=COM_PORT, 
             baudrate=BAUD_RATE,
-            timeout=1
+            timeout=1,
+            use_feedback=USE_SERIAL_FEEDBACK
         )
+        self.use_serial_feedback = USE_SERIAL_FEEDBACK
         
         self.serial_comm = CraneSerialComm(self.serial_config)
         self._setup_serial_callbacks()
@@ -87,31 +91,39 @@ class MainWindow(QMainWindow):
     
     @pyqtSlot(str)
     def _on_serial_feedback(self, feedback: str):
-        """Handle feedback dari serial (contoh: status update)"""
+        """Handle JSON feedback dari serial."""
+        if not self.use_serial_feedback:
+            return
+
         print(f"[SERIAL FEEDBACK] {feedback}")
 
-        # Parse common responses 
-        if feedback == "DONE":
+        try:
+            data = json.loads(feedback)
+        except json.JSONDecodeError:
+            print(f"[SERIAL FEEDBACK] Invalid JSON feedback: {feedback}")
+            return
+
+        status = str(data.get("status", "")).upper()
+
+        if status == "DONE":
             self.panel.set_status("DONE", "Action completed")
-        elif feedback == "IDLE":
+        elif status in {"IDLE", "READY"}:
             self.panel.set_status("IDLE", "Ready for command")
-        elif feedback.startswith("ERROR"):
-            self.panel.set_status("ERROR", feedback)
-        elif feedback.startswith("POS"):
+        elif status == "MOVING":
+            self.panel.set_status("MOVING", "Moving...")
+        elif status == "ERROR":
+            self.panel.set_status("ERROR", data.get("message", feedback))
+        elif data.get("type") == "position":
             # position feedback
             try:
-                parts = feedback.split(',')
-                if len(parts) >= 4:
-                    theta = float(parts[1])
-                    r = float(parts[2])
-                    h = float(parts[3])
+                theta = float(data["theta"])
+                r = float(data["r"])
 
-                    # update canvas
-                    import math
-                    x_cm = 25 + r * math.cos(math.radians(theta))
-                    y_cm = r * math.sin(math.radians(theta))
-                    self.canvas.set_crane_position(x_cm, y_cm)
-            except(ValueError, IndexError):
+                # update canvas
+                x_cm = 25 + r * math.cos(math.radians(theta))
+                y_cm = r * math.sin(math.radians(theta))
+                self.canvas.set_crane_position(x_cm, y_cm)
+            except (KeyError, TypeError, ValueError):
                 print(f"[SERIAL FEEDBACK] Failed to parse position feedback: {feedback}")
 
     @pyqtSlot(str)
@@ -190,7 +202,7 @@ class MainWindow(QMainWindow):
         if not result.is_valid:
             print(f"IK Warning {result.error_msg}")
             self.panel.set_status("ERROR", result.error_msg)
-            self._start_idle_timer(1500)
+            self._start_idle_timer(1500, force=True)
 
         return result.theta_deg, result.r_cm, result.h_cm
     
@@ -220,7 +232,7 @@ class MainWindow(QMainWindow):
         if not success:
             print(f"[MAIN] Failed to send PICK command to serial.")
             self.panel.set_status("ERROR", "Failed to send PICK command")
-            self._start_idle_timer(1500)
+            self._start_idle_timer(1500, force=True)
         
 
     @pyqtSlot()
@@ -248,7 +260,7 @@ class MainWindow(QMainWindow):
         if not sucsess:
             print(f"[MAIN] Failed to send PLACE command to serial.")
             self.panel.set_status("ERROR", "Failed to send PLACE command")
-            self._start_idle_timer(1500)
+            self._start_idle_timer(1500, force=True)
 
     @pyqtSlot()
     def _on_home(self):
@@ -265,7 +277,7 @@ class MainWindow(QMainWindow):
         if not success:
             print(f"[MAIN] Failed to send HOME command to serial.")
             self.panel.set_status("ERROR", "Failed to send HOME command")
-            self._start_idle_timer(1500)
+            self._start_idle_timer(1500, force=True)
     @pyqtSlot()
     def _on_estop(self):
         """Handle E-STOP command"""
@@ -284,8 +296,11 @@ class MainWindow(QMainWindow):
         self.panel.enable_commands(True)
         print("[Timer] Auto-idle timeout - kembali ke IDLE")
 
-    def _start_idle_timer(self, timeMS=None):
+    def _start_idle_timer(self, timeMS=None, force=False):
         """Start hitung mundur ke auto-idle"""
+        if self.use_serial_feedback and not force:
+            return
+
         if not timeMS:
             self.idle_timer.start(self.IDLE_TIMEOUT_MS)
             return

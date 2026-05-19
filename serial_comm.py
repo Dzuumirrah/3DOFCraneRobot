@@ -3,72 +3,68 @@ Serial Communication Module
 Robot Crane 3-DOF
 
 Handles communication to ESP32 microcontroller via USB Serial.
-Protocol: Simple text-based commands
+Protocol: Newline-delimited JSON messages.
 """
+
+import json
+import queue
+import threading
+import time
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Optional
 
 import serial
 import serial.tools.list_ports
-import threading
-import queue
-import time
-from typing import Optional, Callable
-from dataclasses import dataclass
+
 
 @dataclass
 class SerialConfig:
     """Serial port configuration."""
-    port: str = "COM7"              # Default Windows port
-    baudrate: int = 115200          # Baud rate
-    timeout: float = 1.0            # Read timeout
-    write_timeout: float = 1.0      # Write timeout
+
+    port: str = "COM7"
+    baudrate: int = 115200
+    timeout: float = 1.0
+    write_timeout: float = 1.0
+    use_feedback: bool = True
 
 
 class CraneSerialComm:
     """
     Serial communication handler untuk Robot Crane.
-    
+
     Features:
     - Non-blocking TX/RX dengan threading
     - Command queue management
-    - Feedback parsing
+    - JSON feedback parsing
     - Connection state tracking
     """
-    
-    # Command format constants
-    COMMAND_TEMPLATE = "MOVE,{theta:.1f},{r:.1f},{h:.1f},{magnet}\n"
-    HOME_COMMAND = "HOME\n"
-    ESTOP_COMMAND = "ESTOP\n"
-    STATUS_COMMAND = "STATUS\n"
-    
+
     def __init__(self, config: Optional[SerialConfig] = None):
         """
         Initialize serial communicator.
-        
+
         Args:
             config: SerialConfig object. If None, uses defaults.
         """
         self.config = config or SerialConfig()
         self.serial_port: Optional[serial.Serial] = None
-        
-        # Threading
-        self.tx_queue = queue.Queue()      # Command queue
+
+        self.tx_queue = queue.Queue()
         self.rx_thread: Optional[threading.Thread] = None
         self.running = False
-        
-        # Callbacks
+
         self.on_feedback: Optional[Callable[[str], None]] = None
         self.on_error: Optional[Callable[[str], None]] = None
         self.on_connected: Optional[Callable[[], None]] = None
         self.on_disconnected: Optional[Callable[[], None]] = None
-        
-        # State
+
         self.is_connected = False
         self.last_status = "IDLE"
-    
+
     def connect(self, port: Optional[str] = None) -> bool:
         """
         Connect to ESP32 via serial port.
-        
+
         Args:
             port: Serial port name (e.g., "COM3", "/dev/ttyUSB0")
         
@@ -106,8 +102,8 @@ class CraneSerialComm:
             
         except serial.SerialException as e:
             self.is_connected = False
-            error_msg = f"Connection failed: {str(e)}"
-            print(f"[Serial] ✗ {error_msg}")
+            error_msg = f"Connection failed: {e}"
+            print(f"[Serial] {error_msg}")
             if self.on_error:
                 self.on_error(error_msg)
             return False
@@ -155,69 +151,79 @@ class CraneSerialComm:
             if self.on_error:
                 self.on_error("Not connected to ESP32")
             return False
-        
-        magnet_state = "1" if magnet_on else "0"
-        cmd = self.COMMAND_TEMPLATE.format(
-            theta=theta_deg,
-            r=r_cm,
-            h=h_cm,
-            magnet=magnet_state
+
+        cmd = self._json_command(
+            {
+                "command": "MOVE",
+                "theta": round(theta_deg, 1),
+                "r": round(r_cm, 1),
+                "h": round(h_cm, 1),
+                "magnet": magnet_on,
+            }
         )
-        
+
         self.tx_queue.put(cmd)
         print(f"[Serial] Queued: {cmd.strip()}")
         return True
     
     def send_home_command(self) -> bool:
         """Send HOME command."""
-        if not self.is_connected:
-            return False
-        
-        self.tx_queue.put(self.HOME_COMMAND)
-        print("[Serial] Queued: HOME")
-        return True
-    
+        return self._queue_simple_command("HOME")
+
     def send_estop_command(self) -> bool:
         """Send EMERGENCY STOP command."""
+        return self._queue_simple_command("ESTOP")
+
+    def send_status_command(self) -> bool:
+        """Send STATUS command."""
+        return self._queue_simple_command("STATUS")
+
+    def _queue_simple_command(self, command: str) -> bool:
         if not self.is_connected:
+            if self.on_error:
+                self.on_error("Not connected to ESP32")
             return False
-        
-        self.tx_queue.put(self.ESTOP_COMMAND)
-        print("[Serial] Queued: ESTOP")
+
+        cmd = self._json_command({"command": command})
+        self.tx_queue.put(cmd)
+        print(f"[Serial] Queued: {cmd.strip()}")
         return True
-    
+
+    @staticmethod
+    def _json_command(payload: Dict[str, Any]) -> str:
+        """Serialize one command as compact newline-delimited JSON."""
+        return json.dumps(payload, separators=(",", ":")) + "\n"
+
     def _rx_loop(self):
         """
         Receive loop - runs in separate thread.
         Continuously reads from serial port.
         """
         buffer = ""
-        
+
         while self.running:
             try:
                 if self.serial_port and self.serial_port.in_waiting:
                     # Read available data
                     data = self.serial_port.read(self.serial_port.in_waiting)
-                    buffer += data.decode('utf-8', errors='ignore')
-                    
-                    # Process complete lines
-                    while '\n' in buffer:
-                        line, buffer = buffer.split('\n', 1)
+                    buffer += data.decode("utf-8", errors="ignore")
+
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
                         line = line.strip()
-                        if line:
+                        if line and self.config.use_feedback:
                             self._process_feedback(line)
-                
-                # Check TX queue
+
                 try:
                     cmd = self.tx_queue.get(timeout=0.1)
                     self._send_command(cmd)
                 except queue.Empty:
                     pass
-                
+
             except Exception as e:
-                print(f"[Serial RX] Error: {str(e)}")
+                print(f"[Serial RX] Error: {e}")
                 if self.on_error:
-                    self.on_error(f"RX error: {str(e)}")
+                    self.on_error(f"RX error: {e}")
                 break
     
     def _send_command(self, cmd: str):
@@ -225,7 +231,7 @@ class CraneSerialComm:
         Send command ke ESP32.
         
         Args:
-            cmd: Command string (with newline)
+            cmd: JSON command string with newline.
         """
         try:
             if self.serial_port and self.serial_port.is_open:
@@ -233,48 +239,51 @@ class CraneSerialComm:
                 self.serial_port.flush()
                 print(f"[Serial TX] Sent: {cmd.strip()}")
         except Exception as e:
-            print(f"[Serial TX] Error: {str(e)}")
+            print(f"[Serial TX] Error: {e}")
             if self.on_error:
-                self.on_error(f"TX error: {str(e)}")
-    
+                self.on_error(f"TX error: {e}")
+
     def _process_feedback(self, line: str):
         """
-        Process feedback dari ESP32.
-        
-        Expected formats:
-        - "IDLE"
-        - "MOVING"
-        - "DONE"
-        - "ERROR: <message>"
-        - "POS,theta,r,h" (position feedback)
-        
+        Process JSON feedback dari ESP32.
+
+        Expected examples:
+        - {"status":"IDLE"}
+        - {"status":"MOVING"}
+        - {"status":"DONE"}
+        - {"status":"ERROR","message":"Invalid command"}
+        - {"type":"position","theta":90.0,"r":25.0,"h":0.0}
+
         Args:
-            line: Received line
+            line: Received JSON line.
         """
         print(f"[Serial RX] Received: {line}")
-        
-        # Parse feedback
-        if line == "IDLE":
-            self.last_status = "IDLE"
-        elif line == "MOVING":
-            self.last_status = "MOVING"
-        elif line == "DONE":
-            self.last_status = "DONE"
-        elif line.startswith("ERROR"):
+
+        try:
+            feedback = json.loads(line)
+        except json.JSONDecodeError as e:
             self.last_status = "ERROR"
-        elif line.startswith("POS"):
-            # Position feedback: POS,theta,r,h
+            error_msg = f"Invalid JSON feedback: {e.msg}"
+            print(f"[Serial] {error_msg}")
+            if self.on_error:
+                self.on_error(error_msg)
+            return
+
+        status = feedback.get("status")
+        if status:
+            self.last_status = str(status).upper()
+
+        if feedback.get("type") == "position":
             try:
-                parts = line.split(',')
-                if len(parts) >= 4:
-                    theta = float(parts[1])
-                    r = float(parts[2])
-                    h = float(parts[3])
-                    print(f"[Serial] Current position: θ={theta}°, r={r}cm, h={h}cm")
-            except ValueError:
-                pass
-        
-        # Emit callback
+                theta = float(feedback["theta"])
+                r = float(feedback["r"])
+                h = float(feedback["h"])
+                print(f"[Serial] Current position: theta={theta} deg, r={r}cm, h={h}cm")
+            except (KeyError, TypeError, ValueError):
+                if self.on_error:
+                    self.on_error(f"Invalid position feedback: {line}")
+
+        # Keep callback signature as str; callers receive the raw JSON line.
         if self.on_feedback:
             self.on_feedback(line)
     

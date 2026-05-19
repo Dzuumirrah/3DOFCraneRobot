@@ -52,7 +52,7 @@ def test_connection(port: str):
     
     # Send STATUS command
     print("\nSending STATUS command...")
-    comm.serial_port.write(b"STATUS\n")
+    comm.send_status_command()
     time.sleep(1)
     
     # Send HOME command
@@ -142,7 +142,7 @@ def interactive_mode(port: str):
                         h = float(parts[3])
                         magnet = bool(int(parts[4]))
                         comm.send_move_command(theta, r, h, magnet)
-                        print(f"→ Sent: MOVE,{theta},{r},{h},{int(magnet)}")
+                        print(f'→ Sent: {{"command":"MOVE","theta":{theta},"r":{r},"h":{h},"magnet":{str(magnet).lower()}}}')
                     else:
                         print("Usage: MOVE theta r h magnet")
                 
@@ -155,7 +155,7 @@ def interactive_mode(port: str):
                     print("→ Sent: ESTOP")
                 
                 elif user_input.upper() == "STATUS":
-                    comm.serial_port.write(b"STATUS\n")
+                    comm.send_status_command()
                     print("→ Sent: STATUS")
                 
                 else:
