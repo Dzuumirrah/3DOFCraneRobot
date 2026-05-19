@@ -17,7 +17,7 @@ from dataclasses import dataclass
 @dataclass
 class SerialConfig:
     """Serial port configuration."""
-    port: str = "COM3"              # Default Windows port
+    port: str = "COM7"              # Default Windows port
     baudrate: int = 115200          # Baud rate
     timeout: float = 1.0            # Read timeout
     write_timeout: float = 1.0      # Write timeout
