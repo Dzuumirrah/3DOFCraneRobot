@@ -15,8 +15,8 @@ from typing import Tuple, Optional
 @dataclass
 class JointLimits:
     """Physical limits for each joint."""
-    theta_min: float = -180.0      # degrees
-    theta_max: float = 180.0       # degrees
+    theta_min: float = 0            # degrees
+    theta_max: float = 180.0        # degrees
     r_min: float = 0.0              # cm (at base)
     r_max: float = 45.0             # cm (max reach)
     h_min: float = 0.0              # cm (lowest point)

@@ -11,7 +11,8 @@ from PyQt5.QtCore import (
     Qt,
     pyqtSignal,
     QPoint,
-    pyqtSlot
+    pyqtSlot,
+    QTimer
 )
 from PyQt5.QtGui import (
     QPainter,
@@ -45,6 +46,12 @@ class MainWindow(QMainWindow):
             h_min=0, h_max=50
         )
         self.ik = CraneKinematics(self.limits)
+
+        # Auto-idle timer setelah 5 detik
+        self.idle_timer = QTimer()
+        self.idle_timer.setSingleShot(True)
+        self.idle_timer.timeout.connect(self._on_idle_timeout)
+        self.IDLE_TIMEOUT_MS = 5000
 
     def _build_layout(self):
         central = QWidget()
@@ -115,6 +122,7 @@ class MainWindow(QMainWindow):
             return
         
         self.panel.set_status("MOVING", "Moving to target...")
+        self._start_idle_timer()
         x_cm, y_cm = self.target
         # TODO: send command to crane via serial
         print(f"PICK command: move to({x_cm:.1f}, {y_cm:.1f})")
@@ -125,6 +133,7 @@ class MainWindow(QMainWindow):
     def _on_place(self):
         """Handle PLACE command"""    
         self.panel.set_status("MOVING", "Placing object...")
+        self._start_idle_timer()
         # TODO: send command to crane via serial
         print(f"PLACE command: release magnet")
 
@@ -134,18 +143,31 @@ class MainWindow(QMainWindow):
         """Handle HOME command"""
         self.panel.set_status("MOVING", "Going to HOME...")
         self.target = None
-        self.canvas.set_target(0, 0, emit_signal=False)
+        self.canvas.set_target(self.canvas.home_pos[0], self.canvas.home_pos[1], emit_signal=False)
+        
+        self._start_idle_timer()
         # TODO: send command to crane via serial
-        print(f"HOME command: move to(0, 0)")
+        print(f"HOME command: move to({self.canvas.home_pos[0]:.1f}, {self.canvas.home_pos[1]:.1f})")
 
     @pyqtSlot()
     def _on_estop(self):
         """Handle E-STOP command"""
         self.panel.set_status("ERROR", "EMERGENCY STOPPED")
         self.panel.enable_commands(False)
+        self.idle_timer.stop()
         # TODO: send EMERGENCY STOP  via serial
         print(f"E-STOP activated")
-        
+
+    @pyqtSlot()
+    def _on_idle_timeout(self):
+        """Auto return IDLE setelah timeout"""
+        self.panel.set_status("IDLE", "Ready for command")
+        self.panel.enable_commands(True)
+        print("[Timer] Auto-idle timeout - kembali ke IDLE")
+
+    def _start_idle_timer(self):
+        """Start hitung mundur ke auto-idle"""
+        self.idle_timer.start(self.IDLE_TIMEOUT_MS)
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     win = MainWindow()
