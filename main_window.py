@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import (
     QWidget,
     QHBoxLayout, 
     QVBoxLayout,
+    QInputDialog
 )
 from PyQt5.QtCore import (
     Qt,
@@ -23,7 +24,7 @@ from PyQt5.QtGui import (
     QFont
 )
 
-from canvas_widget import CraneCanvasWidget
+from canvas_widget import CraneCanvasWidget, IPWebCamThread
 from control_panel import ControlPanel
 from kinematics import CraneKinematics, JointLimits
 from serial_comm import CraneSerialComm, SerialConfig
@@ -71,6 +72,17 @@ class MainWindow(QMainWindow):
         self.idle_timer.setSingleShot(True)
         self.idle_timer.timeout.connect(self._on_idle_timeout)
         self.IDLE_TIMEOUT_MS = 5000
+
+        # konfigurasi IP camera
+        self.ip_camera_config = {
+            "ip_adress": params.IP_CAMERA_URL,
+            "port": 8080
+        }
+
+        self.canvas.camera_thread = IPWebCamThread(
+            self.ip_camera_config["ip_adress"],
+            self.ip_camera_config["port"]
+        )
 
     def _setup_serial_callbacks(self):
         """Setup callback untuk serial events """
@@ -162,9 +174,12 @@ class MainWindow(QMainWindow):
         self.panel.place_pressed.connect(self._on_place)
         self.panel.home_pressed.connect(self._on_home)
         self.panel.estop_pressed.connect(self._on_estop)
+        self.panel.change_ip_pressed.connect(self._on_change_camera_ip)
         
         root_layout.addWidget(self.canvas, 3)
         root_layout.addWidget(self.panel, 1)
+
+        self.panel.camera_toggle.connect(self._on_camera_toggle)
 
     @pyqtSlot(float, float)
     def _on_target_clicked(self, x_cm, y_cm):
@@ -289,6 +304,54 @@ class MainWindow(QMainWindow):
         self.serial_comm.send_estop_command()
         print(f"[MAIN] Emergency Stop activated!")
 
+    @pyqtSlot(bool)
+    def _on_camera_toggle(self, enabled):
+        """Handle camera toggle from control panel"""
+        try:
+            if enabled:
+                if self.canvas.camera_thread is not None and self.canvas.camera_thread.isRunning():
+                    self.canvas.camera_thread.stop()
+                self.canvas.camera_thread = IPWebCamThread(
+                    self.ip_camera_config["ip_adress"],
+                    port=self.ip_camera_config["port"]
+                )
+                self.canvas.camera_thread.frame_ready.connect(self.canvas._on_camera_frame)
+                self.canvas.camera_thread.start()
+                self.canvas.camera_enabled = True
+                self.canvas.show_camera = True
+                self.panel.set_status("IDLE", "CAMERA ON (phone)")
+            else:
+                self.canvas.show_camera = False
+                self.canvas.camera_enabled = False
+                self.canvas.camera_frame = None
+                if self.canvas.camera_thread is not None and self.canvas.camera_thread.isRunning():
+                    self.canvas.camera_thread.stop()
+                self.panel.set_status("IDLE", "CAMERA OFF")
+                self.canvas.update()
+        except Exception as e:
+            print(f"[CAMERA] Error occurred while toggling camera: {e}")
+            self.panel.set_status("ERROR", f"Camera error: {e}")
+            self.panel.btn_camera.setChecked(False)
+
+    def closeEvent(self, event):
+        """Stop background workers before Qt destroys the window."""
+        if self.canvas.camera_thread is not None and self.canvas.camera_thread.isRunning():
+            self.canvas.camera_thread.stop()
+        super().closeEvent(event)
+    
+    @pyqtSlot()
+    def _on_change_camera_ip(self):
+        """Ubah IPWebcam URL berdasarkan input user"""
+        current_ip = self.ip_camera_config["ip_adress"]
+        new_ip, ok = QInputDialog.getText(self, "IPWebcam IP adress", 
+                                          "Enter new IP address (contoh: 192.168.1.100):", text=current_ip
+                                          )
+        if ok and new_ip:
+            self.ip_camera_config["ip_adress"] = new_ip
+            print(f"[MAIN] Updated IP camera address to: {new_ip}")
+            self.panel.set_status("IDLE", f"Updated camera IP to {new_ip}")
+            self._start_idle_timer(2000, force=True)
+
     @pyqtSlot()
     def _on_idle_timeout(self):
         """Auto return IDLE setelah timeout"""
@@ -305,6 +368,9 @@ class MainWindow(QMainWindow):
             self.idle_timer.start(self.IDLE_TIMEOUT_MS)
             return
         self.idle_timer.start(timeMS)
+
+        
+
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     win = MainWindow()

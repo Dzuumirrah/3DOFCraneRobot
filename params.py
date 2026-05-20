@@ -51,6 +51,10 @@ S_FIX_MAIN = 1000, 400
 S_FIX_CANVAS = 600, 300
 
 # Konfigurasi serial port
-COM_PORT = 'COM7'  # Sesuaikan dengan port yang digunakan
+COM_PORT = 'COM12'  # Sesuaikan dengan port yang digunakan
 BAUD_RATE = 9600
 USE_SERIAL_FEEDBACK = True
+
+# Konfigurasi kamera
+USE_IP_CAMERA = True
+IP_CAMERA_URL = "http://10.108.196.178"

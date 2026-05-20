@@ -19,6 +19,11 @@ class ControlPanel(QWidget):
     home_pressed = pyqtSignal()     # Go to home (0,0)
     estop_pressed = pyqtSignal()    # Emergency Stop
 
+    # tombol untuk aktivasi kamera
+    camera_toggle = pyqtSignal(bool)  # True = aktifkan kamera, False = matikan kamera
+    # tombol untuk ubah IP kamera
+    change_ip_pressed = pyqtSignal()  # Tekan untuk ubah IP kamera
+
     def __init__(self):
         super().__init__()
         self.setStyleSheet(f"background-color: {COLOR['DARKER_BLUE']}; color: white")
@@ -114,6 +119,21 @@ class ControlPanel(QWidget):
         self.btn_estop.setStyleSheet(self._button_style(COLOR["DARK_RED"], True))
         self.btn_estop.clicked.connect(self._on_estop)
         layout.addWidget(self.btn_estop, 1, 1)
+
+        # camera toggle button
+        self.btn_camera = QPushButton("CAMERA")
+        self.btn_camera.setCheckable(True)
+        self.btn_camera.setFixedHeight(50)
+        self.btn_camera.setStyleSheet(self._button_style(COLOR["LIGHT_BLUE"]))
+        self.btn_camera.toggled.connect(self._on_camera_toggle)
+        layout.addWidget(self.btn_camera, 2, 0, 1, 2)
+
+        # ubah IP adress kamera
+        self.btn_change_ip = QPushButton("Change Camera IP")
+        self.btn_change_ip.setFixedHeight(40)
+        self.btn_change_ip.setStyleSheet(self._button_style(COLOR["LIGHT_BLUE"]))
+        self.btn_change_ip.clicked.connect(self._on_change_camera_ip)
+        layout.addWidget(self.btn_change_ip, 3, 0, 1, 2)
 
         group.setLayout(layout)
         self.update()
@@ -237,6 +257,22 @@ class ControlPanel(QWidget):
         self.set_status("ERROR", "EMERGENCY STOPPED!")
         self.estop_pressed.emit()
     
+    def _on_camera_toggle(self):
+        """Handle camera toggle."""
+        is_checked = self.btn_camera.isChecked()
+        if is_checked:
+            self.btn_camera.setText("CAMERA ON")
+            self.btn_camera.setStyleSheet(self._button_style(COLOR["GREEN"]))
+            self.camera_toggle.emit(True)
+        else:
+            self.btn_camera.setText("CAMERA OFF")
+            self.btn_camera.setStyleSheet(self._button_style(COLOR["LIGHT_BLUE"]))
+            self.camera_toggle.emit(False)
+
+    def _on_change_camera_ip(self):
+        """Handle change camera IP button click."""
+        self.set_status("IDLE", "Changing camera IP...")
+        self.change_ip_pressed.emit()
     # === PUBLIC METHODS ===
     
     def set_status(self, status, detail=""):
