@@ -16,13 +16,18 @@ from typing import Any, Callable, Dict, Optional
 import serial
 import serial.tools.list_ports
 
+import params
+
+
+BAUDRATE = params.BAUD_RATE
+DEFAULT_PORT = params.COM_PORT
 
 @dataclass
 class SerialConfig:
     """Serial port configuration."""
 
-    port: str = "COM7"
-    baudrate: int = 115200
+    port: str = DEFAULT_PORT
+    baudrate: int = BAUDRATE
     timeout: float = 1.0
     write_timeout: float = 1.0
     use_feedback: bool = True
@@ -257,6 +262,9 @@ class CraneSerialComm:
         Args:
             line: Received JSON line.
         """
+        if not line.startswith("{"):
+            return
+
         print(f"[Serial RX] Received: {line}")
 
         try:

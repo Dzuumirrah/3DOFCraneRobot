@@ -52,5 +52,5 @@ S_FIX_CANVAS = 600, 300
 
 # Konfigurasi serial port
 COM_PORT = 'COM7'  # Sesuaikan dengan port yang digunakan
-BAUD_RATE = 115200
+BAUD_RATE = 9600
 USE_SERIAL_FEEDBACK = True

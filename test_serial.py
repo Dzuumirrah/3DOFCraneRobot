@@ -10,6 +10,7 @@ import serial
 import serial.tools.list_ports
 import time
 import sys
+import params
 from serial_comm import CraneSerialComm, SerialConfig, auto_detect_esp32_port
 
 
@@ -32,7 +33,7 @@ def test_connection(port: str):
     """Test basic serial connection."""
     print(f"\n=== Testing Connection: {port} ===")
     
-    config = SerialConfig(port=port, baudrate=115200)
+    config = SerialConfig(port=port, baudrate=params.SERIAL_BAUD_RATE)
     comm = CraneSerialComm(config)
     
     # Setup callbacks
@@ -69,7 +70,7 @@ def test_move_command(port: str, theta: float, r: float, h: float):
     print(f"\n=== Testing MOVE Command ===")
     print(f"Target: θ={theta}°, r={r}cm, h={h}cm")
     
-    config = SerialConfig(port=port)
+    config = SerialConfig(port=port, baudrate=params.SERIAL_BAUD_RATE)
     comm = CraneSerialComm(config)
     
     comm.set_callbacks(
@@ -100,7 +101,7 @@ def interactive_mode(port: str):
     print("  STATUS                  - Get status")
     print("  QUIT                    - Exit")
     
-    config = SerialConfig(port=port)
+    config = SerialConfig(port=port, baudrate=params.SERIAL_BAUD_RATE)
     comm = CraneSerialComm(config)
     
     comm.set_callbacks(

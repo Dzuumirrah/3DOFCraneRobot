@@ -20,16 +20,18 @@ Feedback to Python:
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-#define SERIAL_BAUDRATE 115200
+#define SERIAL_BAUDRATE 9600
 #define TIMEOUT_MS 30000
 
-#define MOTOR_THETA_PIN 14
-#define MOTOR_THETA_DIR 27
-#define MOTOR_R_PIN 12
-#define MOTOR_R_DIR 26
-#define MOTOR_H_PIN 13
-#define MOTOR_H_DIR 25
+#define S_MOTOR_THETA_PIN 14
+#define S_MOTOR_THETA_DIR 27
+#define S_MOTOR_R_PIN 12
+#define S_MOTOR_R_DIR 26
+#define DC_MOTOR_H_PIN 13
+#define DC_MOTOR_H_DIR 25
 #define MAGNET_PIN 23
+
+const float HOME_POSITION[3] = {90.0, 25.0, 0.0};   // theta_deg (base), r_cm (shoulder), h_cm (hoist)
 
 enum CommandType {
   CMD_MOVE,
@@ -109,6 +111,20 @@ const char *stateToString(SystemState state) {
 }
 
 Command parseCommand(const String &input) {
+  /*
+    Parses a JSON command string and returns a Command struct.
+    expected input:
+    {"command":"MOVE",
+        "theta":45.0,
+        "r":25.0,
+        "h":20.0,
+        "magnet":true
+    }
+    {"command":"HOME"}
+    {"command":"ESTOP"}
+    {"command":"STATUS"}    
+  */
+  
   Command cmd;
   cmd.type = CMD_INVALID;
   cmd.theta_deg = 0.0;
@@ -156,12 +172,12 @@ Command parseCommand(const String &input) {
 void setup() {
   Serial.begin(SERIAL_BAUDRATE);
 
-  pinMode(MOTOR_THETA_PIN, OUTPUT);
-  pinMode(MOTOR_THETA_DIR, OUTPUT);
-  pinMode(MOTOR_R_PIN, OUTPUT);
-  pinMode(MOTOR_R_DIR, OUTPUT);
-  pinMode(MOTOR_H_PIN, OUTPUT);
-  pinMode(MOTOR_H_DIR, OUTPUT);
+  pinMode(S_MOTOR_THETA_PIN, OUTPUT);
+  pinMode(S_MOTOR_THETA_DIR, OUTPUT);
+  pinMode(S_MOTOR_R_PIN, OUTPUT);
+  pinMode(S_MOTOR_R_DIR, OUTPUT);
+  pinMode(DC_MOTOR_H_PIN, OUTPUT);
+  pinMode(DC_MOTOR_H_DIR, OUTPUT);
   pinMode(MAGNET_PIN, OUTPUT);
 
   digitalWrite(MAGNET_PIN, LOW);
@@ -200,7 +216,7 @@ void executeCommand(Command cmd) {
       moveMotors(cmd.theta_deg, cmd.r_cm, cmd.h_cm, cmd.magnet_on);
       break;
     case CMD_HOME:
-      moveMotors(90.0, 25.0, 0.0, false);
+      moveMotors(HOME_POSITION[0], HOME_POSITION[1], HOME_POSITION[2], false);
       break;
     case CMD_ESTOP:
       emergencyStop();
@@ -235,9 +251,9 @@ void moveMotors(float theta_deg, float r_cm, float h_cm, bool magnet_on) {
 void emergencyStop() {
   current_state = STATE_ESTOP;
 
-  digitalWrite(MOTOR_THETA_PIN, LOW);
-  digitalWrite(MOTOR_R_PIN, LOW);
-  digitalWrite(MOTOR_H_PIN, LOW);
+  digitalWrite(S_MOTOR_THETA_PIN, LOW);
+  digitalWrite(S_MOTOR_R_PIN, LOW);
+  digitalWrite(DC_MOTOR_H_PIN, LOW);
   digitalWrite(MAGNET_PIN, LOW);
 
   sendError("EMERGENCY_STOP");
