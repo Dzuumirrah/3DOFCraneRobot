@@ -33,9 +33,12 @@ import params
 
 COLOR = params.COLORS
 W_MAIN, H_MAIN = params.S_FIX_MAIN
+
 COM_PORT = params.COM_PORT
 BAUD_RATE = params.BAUD_RATE
 USE_SERIAL_FEEDBACK = params.USE_SERIAL_FEEDBACK
+
+# limits
 
 class MainWindow(QMainWindow):
     def __init__ (self):
@@ -47,11 +50,12 @@ class MainWindow(QMainWindow):
         self.target = None
 
         self.limits = JointLimits(
-            theta_min=-180, theta_max=180,
-            r_min=15, r_max=45,
-            h_min=0, h_max=50
+            theta_min=params.THETA_LIMITS[0], theta_max=params.THETA_LIMITS[1],
+            r_min=params.R_LIMITS[0], r_max=params.R_LIMITS[1],
+            h_min=params.H_LIMITS[0], h_max=params.H_LIMITS[1]
         )
         self.ik = CraneKinematics(self.limits)
+        self.target_reached = False
 
         self.serial_config = SerialConfig(
             port=COM_PORT, 
@@ -218,7 +222,9 @@ class MainWindow(QMainWindow):
             print(f"IK Warning {result.error_msg}")
             self.panel.set_status("ERROR", result.error_msg)
             self._start_idle_timer(1500, force=True)
-
+            self.target_reached = False
+        else:
+            self.target_reached = True
         return result.theta_deg, result.r_cm, result.h_cm
     
     @pyqtSlot()
@@ -226,6 +232,9 @@ class MainWindow(QMainWindow):
         """Handle PICK command"""
         if not self.target:
             self.panel.set_status("ERROR", "No target set")
+            return
+        if not self.target_reached:
+            self.panel.set_status("ERROR", "Invalid target")
             return
         
         # Ambil target terakhir yang diklik
@@ -262,6 +271,10 @@ class MainWindow(QMainWindow):
         else:
             # jika tidak ada target, taruh di lokasi yang sama
             x_cm, y_cm = self.canvas.crane_pos
+        
+        if not self.target_reached:
+            self.panel.set_status("ERROR", "Invalid target")
+            return
         
         theta_deg, r_cm, h_cm = self._calculate_ik(x_cm, y_cm)
 

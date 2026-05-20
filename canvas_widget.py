@@ -11,6 +11,8 @@ import params
 
 COLOR = params.COLORS
 W_CANVAS, H_CANVAS = params.S_FIX_CANVAS
+R_LIMITS_MIN, R_LIMITS_MAX = params.R_LIMITS
+THETA_LIMITS_MIN, THETA_LIMITS_MAX = params.THETA_LIMITS
 
 class IPWebCamThread(QThread):
     """
@@ -62,7 +64,7 @@ class IPWebCamThread(QThread):
                 if ret:
                     frame = cv2.flip(frame, 1)  # Mirror image
                     self.frame_ready.emit(frame)
-                    time.sleep(0.010)  # ~15 FPS
+                    time.sleep(0.010)  # ~100 FPS
 
                     frame_count += 1
                     if frame_count % 30 == 0:
@@ -98,11 +100,11 @@ class CraneCanvasWidget(QWidget):
     # Workspace params (cm)
     WORKSPACE_CENTER_X = 0   # Center of semicircle (middle of workspace)
     WORKSPACE_CENTER_Y = 0    # Y = 0 at home level
-    WORKSPACE_RADIUS_MIN = 15
-    WORKSPACE_RADIUS_MAX = 45
-    TASK_SPACE_RADIUS = 60     # Max reach radius
-    WORKSPACE_Y_MAX = 45      # Upper limit of workspace
-
+    WORKSPACE_RADIUS_MIN = R_LIMITS_MIN
+    WORKSPACE_RADIUS_MAX = R_LIMITS_MAX
+    WORKSPACE_ARC_START_ANGLE = THETA_LIMITS_MIN   # degrees
+    WORKSPACE_ARC_END_ANGLE = THETA_LIMITS_MAX   # degrees
+    TASK_SPACE_RADIUS = 40     # Max reach radius
     # Visual params
     GRID_SPACING = 5
     MARGIN = 40
@@ -322,7 +324,7 @@ class CraneCanvasWidget(QWidget):
             int(canvas_center_py - outer_radius_px),
             int(outer_radius_px * 2),
             int(outer_radius_px * 2),
-            0, 180 * 16  # 180 degrees in 1/16ths
+            self.WORKSPACE_ARC_START_ANGLE, self.WORKSPACE_ARC_END_ANGLE * 16  # 180 degrees in 1/16ths
         )
          # Draw min workspace radius.
         inner_radius_cm = self.WORKSPACE_RADIUS_MIN
@@ -333,7 +335,7 @@ class CraneCanvasWidget(QWidget):
             int(canvas_center_py - inner_radius_px),
             int(inner_radius_px * 2),
             int(inner_radius_px * 2),
-            0, 180 * 16
+            self.WORKSPACE_ARC_START_ANGLE, self.WORKSPACE_ARC_END_ANGLE * 16
         )
         
         # Draw baseline (y=0)
