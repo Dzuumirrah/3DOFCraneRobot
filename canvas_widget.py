@@ -1,10 +1,9 @@
 from PyQt5.QtWidgets import QWidget
 from PyQt5.QtGui import QPainter, QPen, QColor, QBrush, QFont, QPixmap, QImage
-from PyQt5.QtCore import Qt, pyqtSignal, QPoint, QThread, QMutex, pyqtSlot
+from PyQt5.QtCore import Qt, pyqtSignal, QThread, pyqtSlot
 
 import cv2
 import time
-from io import BytesIO
 from urllib.parse import urlparse
 
 import params
@@ -62,7 +61,7 @@ class IPWebCamThread(QThread):
             while self.running:
                 ret, frame = self.cap.read()
                 if ret:
-                    frame = cv2.flip(frame, 1)  # Mirror image
+                    # frame = cv2.flip(frame, 1)  # Mirror image
                     self.frame_ready.emit(frame)
                     time.sleep(0.010)  # ~100 FPS
 

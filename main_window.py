@@ -6,24 +6,12 @@ from PyQt5.QtWidgets import (
     QMainWindow, 
     QWidget,
     QHBoxLayout, 
-    QVBoxLayout,
     QInputDialog
 )
 from PyQt5.QtCore import (
-    Qt,
-    pyqtSignal,
-    QPoint,
     pyqtSlot,
     QTimer
 )
-from PyQt5.QtGui import (
-    QPainter,
-    QPen,
-    QColor,
-    QBrush,
-    QFont
-)
-
 from canvas_widget import CraneCanvasWidget, IPWebCamThread
 from control_panel import ControlPanel
 from kinematics import CraneKinematics, JointLimits
@@ -230,11 +218,10 @@ class MainWindow(QMainWindow):
     @pyqtSlot()
     def _on_pick(self):
         """Handle PICK command"""
+        # tidak ada target yang dipilih
         if not self.target:
             self.panel.set_status("ERROR", "No target set")
-            return
-        if not self.target_reached:
-            self.panel.set_status("ERROR", "Invalid target")
+            self._start_idle_timer(1000, force=True)
             return
         
         # Ambil target terakhir yang diklik
@@ -242,6 +229,17 @@ class MainWindow(QMainWindow):
         
         # Hitung IK untuk target
         theta_deg, r_cm, h_cm = self._calculate_ik(x_cm, y_cm)
+        # target di luar jangkauan joint
+        if not self.target_reached:
+            self.panel.set_status("ERROR", "Invalid target")
+            self._start_idle_timer(1000, force=True)
+            return
+        # sudah memegang objek (mencegah dua kali pick tanpa place)
+        if self.panel.is_picked and self.target:
+            self.panel.set_status("ERROR", "Already holding an object!")
+            self._start_idle_timer(1000, force=True)
+            return
+
         
         self.panel.set_status("MOVING", f"Moving to {x_cm:.1f}, {y_cm:.1f} to PICK")
         self._start_idle_timer()
@@ -264,6 +262,10 @@ class MainWindow(QMainWindow):
         """Handle PLACE command"""    
         self.panel.set_status("MOVING", "Placing object...")
         self._start_idle_timer()
+        if self.panel.is_placed:
+            self.panel.set_status("ERROR", "No object to place!")
+            self._start_idle_timer(1000, force=True)
+            return
 
         if self.target:
             # taruh ke target terakhir yang diklik

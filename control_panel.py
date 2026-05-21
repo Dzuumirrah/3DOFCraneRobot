@@ -32,6 +32,8 @@ class ControlPanel(QWidget):
         # State tracking
         self.current_status = "IDLE"
         self.last_target = None
+        self.is_picked = False
+        self.is_placed = False
 
     def _build_layout(self):
         main_layout = QVBoxLayout(self)
@@ -241,21 +243,35 @@ class ControlPanel(QWidget):
         """Handle PICK command."""
         self.set_status("MOVING", "Picking up...")
         self.pick_pressed.emit()
+        if self.is_picked and self.last_target:
+            self.set_status("ERROR", "Already holding an object!")
+        else:
+            self.is_picked = True
+            self.is_placed = False
     
     def _on_place(self):
         """Handle PLACE command."""
         self.set_status("MOVING", "Placing down...")
         self.place_pressed.emit()
-    
+        if self.is_placed:
+            self.set_status("ERROR", "No object to place!")
+        else:
+            self.is_placed = True
+            self.is_picked = False
+
     def _on_home(self):
         """Handle HOME command."""
         self.set_status("MOVING", "Going to home...")
         self.home_pressed.emit()
+        self.is_placed = False
+        self.is_picked = False
     
     def _on_estop(self):
         """Handle E-STOP."""
         self.set_status("ERROR", "EMERGENCY STOPPED!")
         self.estop_pressed.emit()
+        self.is_placed = False
+        self.is_picked = False
     
     def _on_camera_toggle(self):
         """Handle camera toggle."""
@@ -298,6 +314,10 @@ class ControlPanel(QWidget):
         self.btn_pick.setEnabled(enabled)
         self.btn_place.setEnabled(enabled)
         self.btn_home.setEnabled(enabled)
+
+    def is_place_enabled(self):
+        """Check if PLACE command should be enabled."""
+        return self.is_picked
 
 
         
